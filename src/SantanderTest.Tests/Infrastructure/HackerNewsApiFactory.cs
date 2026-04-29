@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SantanderTest.Api;
 
-namespace EmagineTest.Tests.Infrastructure
+namespace SantanderTest.Tests.Infrastructure
 {
     internal sealed class HackerNewsApiFactory : WebApplicationFactory<Program>
     {

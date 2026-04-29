@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 
-namespace EmagineTest.Tests.Infrastructure
+namespace SantanderTest.Tests.Infrastructure
 {
     internal sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
     {

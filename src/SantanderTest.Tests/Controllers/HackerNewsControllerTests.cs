@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
-using EmagineTest.Tests.Infrastructure;
+using SantanderTest.Tests.Infrastructure;
 using SantanderTest.Api.Dtos;
 using SantanderTest.Api.Responses;
 
-namespace EmagineTest.Tests.Controllers
+namespace SantanderTest.Tests.Controllers
 {
     public sealed class HackerNewsControllerTests
     {

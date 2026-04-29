@@ -1,12 +1,12 @@
 using System.Net;
-using EmagineTest.Tests.Infrastructure;
+using SantanderTest.Tests.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SantanderTest.Api.Configs;
 using SantanderTest.Api.Dtos;
 using SantanderTest.Api.Services;
 
-namespace EmagineTest.Tests.Services
+namespace SantanderTest.Tests.Services
 {
     public sealed class HackerNewsServiceTests
     {

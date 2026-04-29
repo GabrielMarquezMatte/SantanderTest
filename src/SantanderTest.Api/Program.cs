@@ -33,10 +33,10 @@ namespace SantanderTest.Api
             services.AddProblemDetails();
             services.AddResponseCompression(options =>
             {
-                options.Providers.Add<GzipCompressionProvider>();
+                options.Providers.Add<BrotliCompressionProvider>();
                 options.EnableForHttps = true;
             });
-            services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
+            services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
             services.AddMvc(x => x.SuppressAsyncSuffixInActionNames = false);
             services.AddControllers()
                 .AddJsonOptions(x =>
@@ -50,17 +50,20 @@ namespace SantanderTest.Api
         }
         private static void ConfigureMiddleware(WebApplication app)
         {
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
+            if (app.Environment.IsDevelopment())
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "SantanderTest API v1");
-                c.EnablePersistAuthorization();
-                c.DefaultModelsExpandDepth(-1);
-                c.EnableTryItOutByDefault();
-                c.DisplayRequestDuration();
-            });
-            app.UseCors(builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+                app.UseSwagger();
+                app.UseSwaggerUI(c =>
+                {
+                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SantanderTest API v1");
+                    c.EnablePersistAuthorization();
+                    c.DefaultModelsExpandDepth(-1);
+                    c.EnableTryItOutByDefault();
+                    c.DisplayRequestDuration();
+                });
+            }
             app.UseRouting();
+            app.UseCors(builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
             app.UseResponseCompression();
             app.UseExceptionHandler();
             app.MapControllers();
