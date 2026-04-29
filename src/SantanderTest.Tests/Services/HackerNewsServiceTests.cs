@@ -11,13 +11,6 @@ namespace SantanderTest.Tests.Services
     public sealed class HackerNewsServiceTests
     {
         private static readonly Uri BaseUrl = new("https://hacker-news.test/");
-        private static readonly IComparer<HackerNewsDto> ScoreThenIdDesc = Comparer<HackerNewsDto>.Create((a, b) =>
-        {
-            ArgumentNullException.ThrowIfNull(a);
-            ArgumentNullException.ThrowIfNull(b);
-            var byScore = b.Score.CompareTo(a.Score);
-            return byScore != 0 ? byScore : b.Id.CompareTo(a.Id);
-        });
         private static HackerNewsDto Story(int id, int score = 0, long time = 0L, string title = "t", string by = "u",
                                            string type = "story", int descendants = 0)
         {
@@ -44,8 +37,7 @@ namespace SantanderTest.Tests.Services
                 _httpClient = new(handler, disposeHandler: false);
                 Service = new(
                     _httpClient,
-                    Options.Create(new HackerNewsConfig { BaseUrl = BaseUrl }),
-                    NullLogger<HackerNewsService>.Instance);
+                    Options.Create(new HackerNewsConfig { BaseUrl = BaseUrl }));
             }
 
             public void Dispose() => _httpClient.Dispose();
@@ -66,7 +58,7 @@ namespace SantanderTest.Tests.Services
                 };
             });
             using TestHost host = new(handler);
-            var stories = await host.Service.GetStoriesByTypeAsync("top", 3, ScoreThenIdDesc, TestContext.Current.CancellationToken);
+            var stories = await host.Service.GetStoriesByTypeAsync("top", 3, TestContext.Current.CancellationToken);
             Assert.Equal([2, 3, 1], stories.Select(s => s.Id));
         }
 
@@ -89,7 +81,7 @@ namespace SantanderTest.Tests.Services
                 return new(HttpStatusCode.NotFound);
             });
             using TestHost host = new(handler);
-            var stories = await host.Service.GetStoriesByTypeAsync("top", 2, ScoreThenIdDesc, TestContext.Current.CancellationToken);
+            var stories = await host.Service.GetStoriesByTypeAsync("top", 2, TestContext.Current.CancellationToken);
             Assert.Equal([5, 4], stories.Select(s => s.Id));
         }
 
@@ -107,7 +99,7 @@ namespace SantanderTest.Tests.Services
                 };
             });
             using TestHost host = new(handler);
-            await host.Service.GetStoriesByTypeAsync("best", 5, ScoreThenIdDesc, TestContext.Current.CancellationToken);
+            await host.Service.GetStoriesByTypeAsync("best", 5, TestContext.Current.CancellationToken);
             var paths = handler.Requests.Select(u => u.AbsolutePath).ToHashSet(StringComparer.Ordinal);
             Assert.Contains("/v0/beststories.json", paths);
             Assert.Contains("/v0/item/7.json", paths);
@@ -129,9 +121,9 @@ namespace SantanderTest.Tests.Services
                 };
             });
             using TestHost host = new(handler);
-            await host.Service.GetStoriesByTypeAsync("top", 5, ScoreThenIdDesc, TestContext.Current.CancellationToken);
+            await host.Service.GetStoriesByTypeAsync("top", 5, TestContext.Current.CancellationToken);
             var firstCallCount = handler.Requests.Count;
-            await host.Service.GetStoriesByTypeAsync("top", 5, ScoreThenIdDesc, TestContext.Current.CancellationToken);
+            await host.Service.GetStoriesByTypeAsync("top", 5, TestContext.Current.CancellationToken);
             Assert.Equal(firstCallCount, handler.Requests.Count);
         }
 
@@ -156,8 +148,8 @@ namespace SantanderTest.Tests.Services
             });
             using TestHost host = new(handler);
             await Assert.ThrowsAsync<HttpRequestException>(
-                () => host.Service.GetStoriesByTypeAsync("top", 1, ScoreThenIdDesc, TestContext.Current.CancellationToken));
-            var stories = await host.Service.GetStoriesByTypeAsync("top", 1, ScoreThenIdDesc, TestContext.Current.CancellationToken);
+                () => host.Service.GetStoriesByTypeAsync("top", 1, TestContext.Current.CancellationToken));
+            var stories = await host.Service.GetStoriesByTypeAsync("top", 1, TestContext.Current.CancellationToken);
             var only = Assert.Single(stories);
             Assert.Equal(42, only.Id);
             Assert.Equal(2, attempts);
@@ -171,7 +163,7 @@ namespace SantanderTest.Tests.Services
             using CancellationTokenSource cts = new();
             await cts.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => host.Service.GetStoriesByTypeAsync("top", 1, ScoreThenIdDesc, cts.Token));
+                () => host.Service.GetStoriesByTypeAsync("top", 1, cts.Token));
         }
     }
 }

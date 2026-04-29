@@ -3,6 +3,7 @@ using BitFaster.Caching.Lru;
 using Microsoft.Extensions.Options;
 using SantanderTest.Api.Configs;
 using SantanderTest.Api.Dtos;
+using SantanderTest.Api.Objects;
 
 namespace SantanderTest.Api.Services
 {
@@ -45,17 +46,30 @@ namespace SantanderTest.Api.Services
         {
             return _responsesCache.GetOrAddAsync(id, GetStoryImplAsync, cancellationToken);
         }
-        public async Task<HackerNewsDto[]> GetStoriesByTypeAsync(string type, int count, IComparer<HackerNewsDto>? orderBySelector, CancellationToken cancellationToken)
+        public async Task<HackerNewsDto[]> GetStoriesByTypeAsync(string type, int count, CancellationToken cancellationToken)
         {
+            PriorityQueue<HackerNewsDto, NewsPriority> topStories = new();
+            if (count <= 0) return [];
             var storyIds = await GetStoriesAsync(type, cancellationToken).ConfigureAwait(false);
             var tasks = storyIds.Select(id => GetStoryAsync(id, cancellationToken).AsTask());
-            SortedSet<HackerNewsDto> sortedStories = new(orderBySelector);
-            await foreach(var task in Task.WhenEach(tasks).WithCancellation(cancellationToken).ConfigureAwait(false))
+            await foreach (var task in Task.WhenEach(tasks).WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                var result = await task.ConfigureAwait(false);
-                sortedStories.Add(result);
+                var story = await task.ConfigureAwait(false);
+                NewsPriority priority = new(story.Score, story.Time, story.Id);
+                if (topStories.Count < count)
+                {
+                    topStories.Enqueue(story, priority);
+                    continue;
+                }
+                topStories.EnqueueDequeue(story, priority);
             }
-            return [.. sortedStories.Take(count)];
+            var result = new HackerNewsDto[topStories.Count];
+            var index = result.Length - 1;
+            while (topStories.TryDequeue(out var story, out _))
+            {
+                result[index--] = story;
+            }
+            return result;
         }
     }
 }

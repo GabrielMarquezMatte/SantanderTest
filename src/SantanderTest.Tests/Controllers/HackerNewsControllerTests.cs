@@ -82,7 +82,7 @@ namespace SantanderTest.Tests.Controllers
             Assert.Equal(75, only.Score);
             Assert.Equal(9, only.CommentCount);
             Assert.Equal("story", only.Type);
-            Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(unixSeconds).DateTime, only.Time);
+            Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(unixSeconds), only.Time);
             Assert.Equal(new Uri("https://news.example/1"), only.Url);
             Assert.Equal("body", only.Text);
         }
