@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SantanderTest.Api/SantanderTest.Api.csproj" />
+    <Project Path="src/SantanderTest.Tests/SantanderTest.Tests.csproj" />
+  </Folder>
+</Solution>
