@@ -6,6 +6,7 @@ namespace SantanderTest.Api.Configs
     {
         [Required]
         public required Uri BaseUrl { get; init; }
+        [Range(1, 100)]
         public int MaxDegreeOfParallelism { get; init; } = Environment.ProcessorCount;
     }
 }

@@ -56,7 +56,7 @@ GET /hackernews/{type}?count={count}
   `stories.json` suffix. Valid values are `top`, `best`, `new`, `ask`,
   `show`, `job`.
 - `count` (query, optional, default `10`): how many stories to return after
-  sorting.
+  sorting. Valid values are `1` through `100`.
 
 Examples:
 
@@ -74,9 +74,8 @@ A successful response is a JSON array of objects shaped like
     "id": 12345,
     "title": "Some headline",
     "url": "https://example.com/article",
-    "text": null,
     "postedBy": "jdoe",
-    "time": "2026-04-29T12:34:56",
+    "time": "2026-04-29T12:34:56+00:00",
     "score": 482,
     "type": "story",
     "commentCount": 137
@@ -93,7 +92,8 @@ and can be overridden through the standard ASP.NET configuration providers
 ```json
 {
   "HackerNews": {
-    "BaseUrl": "https://hacker-news.firebaseio.com/"
+    "BaseUrl": "https://hacker-news.firebaseio.com/",
+    "MaxDegreeOfParallelism": 8
   }
 }
 ```
@@ -101,7 +101,9 @@ and can be overridden through the standard ASP.NET configuration providers
 The configuration is bound through `IOptions<HackerNewsConfig>` with
 `ValidateDataAnnotations` and `ValidateOnStart`, so a missing or malformed
 `BaseUrl` makes the application fail fast at startup instead of crashing on
-the first request.
+the first request. `MaxDegreeOfParallelism` controls how many individual
+story requests may be in flight at once, defaults to `Environment.ProcessorCount`,
+and is validated to stay between `1` and `100`.
 
 ---
 
@@ -168,40 +170,36 @@ Failures are *not* cached. The test
 behavior down: a 500 from upstream throws, but a retry hits the network
 again and succeeds.
 
-### 3. Singleton service, scoped HttpClient
+### 3. Singleton service, factory-created HttpClient
 
 `HackerNewsService` is registered as a singleton so that the caches live as
-long as the process. The `HttpClient` it consumes is provided by
-`IHttpClientFactory`, which keeps connection pooling and DNS refresh
-healthy without leaking sockets.
+long as the process. The `HttpClient` it consumes is registered through
+`AddHttpClient`, which keeps outbound HTTP setup centralized and easy to
+customize with timeouts, base addresses or resilience policies.
 
-### 4. Concurrent fetch + streaming sort with `Task.WhenEach`
+### 4. Bounded concurrent fetch with channels
 
-Once the list of ids is known, every story is requested in parallel.
-Instead of awaiting the full batch with `Task.WhenAll` and *then* sorting,
-the service streams completions through `Task.WhenEach` and inserts each
-DTO into a `SortedSet<HackerNewsDto>` keyed by the requested comparer:
+Once the list of ids is known, the service partitions the ids across a
+bounded number of workers. Each worker fetches one story at a time, so the
+maximum number of upstream item requests is capped by
+`HackerNews:MaxDegreeOfParallelism` instead of growing with the size of the
+Hacker News list.
 
-```csharp
-SortedSet<HackerNewsDto> sortedStories = new(orderBySelector);
-await foreach (var task in Task.WhenEach(tasks).WithCancellation(...))
-{
-    sortedStories.Add(await task);
-}
-return [.. sortedStories.Take(count)];
-```
+Completed stories are written into a bounded `Channel<HackerNewsDto>`, and
+the single reader consumes that stream as results arrive. The channel keeps
+memory pressure predictable and gives the workers backpressure if the reader
+falls behind.
 
-This means the sort happens *as the data arrives*, the working set is
-naturally bounded, and there is no separate `OrderBy` pass over the
-materialized list.
+While consuming the channel, the service keeps only the best `count` stories
+in a `PriorityQueue<HackerNewsDto, NewsPriority>`. That avoids materializing
+and sorting the full list when the caller only asked for a small page.
 
 ### 5. Sort by score, then by recency
 
-Implemented in
-[`HackerNewsController.StoryComparer`](src/SantanderTest.Api/Controllers/HackerNewsController.cs):
-descending by `Score`, ties broken by descending `Time` (newer first).
-This matches the intuitive "best" ordering: high karma, recent first.
-The comparer is a private static singleton to avoid allocation per call.
+Implemented by [`NewsPriority`](src/SantanderTest.Api/Objects/NewsPriority.cs):
+highest `Score` first, ties broken by newest `Time`, then by highest `Id`.
+This gives stable, deterministic output while matching the intuitive "best"
+ordering: high karma, recent first.
 
 ### 6. Separate upstream DTO and outbound response
 
@@ -210,7 +208,7 @@ shape returned by Hacker News and is purely an internal contract.
 [`HackerNewsResponse`](src/SantanderTest.Api/Responses/HackerNewsResponse.cs)
 is what clients see. Three deliberate translations happen at the boundary:
 
-- `Time` (Unix seconds, `long`) becomes a real `DateTime`.
+- `Time` (Unix seconds, `long`) becomes a real `DateTimeOffset`.
 - `By` becomes `PostedBy` (clearer name).
 - `Descendants` becomes `CommentCount` (the upstream name leaks an
   implementation detail of the Hacker News tree model).
@@ -221,11 +219,13 @@ need to change; the public contract stays stable.
 ### 7. Cancellation propagation
 
 Every async path takes a `CancellationToken` and forwards it to
-`HttpClient`, JSON deserialization and `Task.WhenEach`. The test
+`HttpClient`, JSON deserialization, channel reads/writes and worker
+execution. The test
 `GetStoriesByTypeAsync_PropagatesCancellation` enforces this: cancelling
 the token before the call surfaces as `OperationCanceledException`. This
 matters because a client that closes the connection while the API is
-fanning out 500 sub-requests should not leave them all running.
+fetching a Hacker News list should not leave background item requests
+running.
 
 ### 8. Centralized error handling
 
@@ -237,7 +237,7 @@ which logs the full exception server-side via a source-generated
 
 ### 9. Response compression
 
-Hacker News stories returned in batches of 10 to 500 produce JSON payloads
+Hacker News stories returned in batches of up to 100 produce JSON payloads
 where gzip helps a lot. `UseResponseCompression` with
 `CompressionLevel.Optimal` is enabled for both HTTP and HTTPS in
 [`Program.cs`](src/SantanderTest.Api/Program.cs).

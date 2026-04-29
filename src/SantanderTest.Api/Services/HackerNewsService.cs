@@ -31,7 +31,7 @@ namespace SantanderTest.Api.Services
             var content = await response.Content.ReadFromJsonAsync<List<int>>(cancellationToken).ConfigureAwait(false);
             return content ?? [];
         }
-        private ValueTask<List<int>> GetStoriesAsync(string type, CancellationToken cancellationToken)
+        private ValueTask<List<int>> GetStoryIdsAsync(string type, CancellationToken cancellationToken)
         {
             return _storiesCache.GetOrAddAsync(type, GetStoriesImplAsync, cancellationToken);
         }
@@ -57,11 +57,9 @@ namespace SantanderTest.Api.Services
                 await writer.WriteAsync(story, cancellationToken).ConfigureAwait(false);
             }
         }
-        public async Task<HackerNewsDto[]> GetStoriesByTypeAsync(string type, int count, CancellationToken cancellationToken)
+        private async Task<PriorityQueue<HackerNewsDto, NewsPriority>> GetManyStoriesAsync(int count, List<int> storyIds, CancellationToken cancellationToken)
         {
             PriorityQueue<HackerNewsDto, NewsPriority> topStories = new();
-            if (count <= 0) return [];
-            var storyIds = await GetStoriesAsync(type, cancellationToken).ConfigureAwait(false);
             var workerCount = Math.Min(configuration.Value.MaxDegreeOfParallelism, storyIds.Count);
             BoundedChannelOptions channelOptions = new(workerCount * 2)
             {
@@ -71,19 +69,22 @@ namespace SantanderTest.Api.Services
             };
             var channel = Channel.CreateBounded<HackerNewsDto>(channelOptions);
             var partitions = Partitioner.Create(storyIds).GetPartitions(workerCount);
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var token = linkedCts.Token;
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = workerCount,
-                CancellationToken = token
+                CancellationToken = cancellationToken,
             };
             int counter = partitions.Count;
             var workerTask = Parallel.ForEachAsync(partitions, parallelOptions, async (ids, ct) =>
             {
                 try
                 {
-                    await GetStoryWorkerAsync(ids, channel.Writer, ct).ConfigureAwait(false);
+#pragma warning disable IDISP007 // Don't dispose injected
+                    using (ids)
+                    {
+                        await GetStoryWorkerAsync(ids, channel.Writer, ct).ConfigureAwait(false);
+                    }
+#pragma warning restore IDISP007 // Don't dispose injected
                 }
                 finally
                 {
@@ -93,7 +94,7 @@ namespace SantanderTest.Api.Services
                     }
                 }
             });
-            await foreach (var story in channel.Reader.ReadAllAsync(token).ConfigureAwait(false))
+            await foreach (var story in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 NewsPriority priority = new(story.Score, story.Time, story.Id);
                 if (topStories.Count < count)
@@ -104,7 +105,13 @@ namespace SantanderTest.Api.Services
                 topStories.EnqueueDequeue(story, priority);
             }
             await workerTask.ConfigureAwait(false);
-            await linkedCts.CancelAsync().ConfigureAwait(false);
+            return topStories;
+        }
+        public async Task<HackerNewsDto[]> GetStoriesByTypeAsync(string type, int count, CancellationToken cancellationToken)
+        {
+            if (count <= 0) return [];
+            var storyIds = await GetStoryIdsAsync(type, cancellationToken).ConfigureAwait(false);
+            var topStories = await GetManyStoriesAsync(count, storyIds, cancellationToken).ConfigureAwait(false);
             var result = new HackerNewsDto[topStories.Count];
             var index = result.Length - 1;
             while (topStories.TryDequeue(out var story, out _))
