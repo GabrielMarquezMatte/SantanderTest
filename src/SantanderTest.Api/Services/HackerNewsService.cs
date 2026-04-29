@@ -6,7 +6,7 @@ using SantanderTest.Api.Dtos;
 
 namespace SantanderTest.Api.Services
 {
-    public sealed class HackerNewsService(HttpClient httpClient, IOptions<HackerNewsConfig> configuration, ILogger<HackerNewsService> logger)
+    public sealed class HackerNewsService(HttpClient httpClient, IOptions<HackerNewsConfig> configuration)
     {
         private static IAsyncCache<TKey, T> BuildCache<TKey, T>(IEqualityComparer<TKey>? comparer = null) where TKey : notnull
         {
@@ -41,22 +41,14 @@ namespace SantanderTest.Api.Services
             var content = await response.Content.ReadFromJsonAsync<HackerNewsDto>(cancellationToken).ConfigureAwait(false);
             return content ?? throw new InvalidOperationException($"Failed to deserialize response for story with ID {id}.");
         }
-        private async Task<HackerNewsDto> GetStoryAsync(int id, CancellationToken cancellationToken)
+        private ValueTask<HackerNewsDto> GetStoryAsync(int id, CancellationToken cancellationToken)
         {
-            var inCache = true;
-            var response = await _responsesCache.GetOrAddAsync(id, async (storyId, ct) =>
-            {
-                var result = await GetStoryImplAsync(storyId, ct).ConfigureAwait(false);
-                inCache = false;
-                return result;
-            }, cancellationToken).ConfigureAwait(false);
-            logger.LogInformation("Story with ID {StoryId} was {CacheStatus} retrieved from cache.", id, inCache ? "successfully" : "not");
-            return response;
+            return _responsesCache.GetOrAddAsync(id, GetStoryImplAsync, cancellationToken);
         }
         public async Task<HackerNewsDto[]> GetStoriesByTypeAsync(string type, int count, IComparer<HackerNewsDto>? orderBySelector, CancellationToken cancellationToken)
         {
             var storyIds = await GetStoriesAsync(type, cancellationToken).ConfigureAwait(false);
-            var tasks = storyIds.Select(id => GetStoryAsync(id, cancellationToken));
+            var tasks = storyIds.Select(id => GetStoryAsync(id, cancellationToken).AsTask());
             SortedSet<HackerNewsDto> sortedStories = new(orderBySelector);
             await foreach(var task in Task.WhenEach(tasks).WithCancellation(cancellationToken).ConfigureAwait(false))
             {

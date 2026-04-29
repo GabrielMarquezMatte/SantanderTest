@@ -20,7 +20,9 @@ namespace SantanderTest.Api.Controllers
                 if (y is null) return 1;
                 int scoreComparison = y.Score.CompareTo(x.Score);
                 if (scoreComparison != 0) return scoreComparison;
-                return y.Time.CompareTo(x.Time);
+                var timeComparison = y.Time.CompareTo(x.Time);
+                if (timeComparison != 0) return timeComparison;
+                return y.Id.CompareTo(x.Id);
             }
         }
         private static HackerNewsResponse MapToResponse(HackerNewsDto dto)
