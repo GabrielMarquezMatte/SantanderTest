@@ -29,7 +29,7 @@ namespace SantanderTest.Api.Controllers
                        DateTimeOffset.FromUnixTimeSeconds(dto.Time).DateTime, dto.Score, dto.Type, dto.Descendants);
         }
         [HttpGet("{type}")]
-        public async Task<IActionResult> GetStoriesByTypeAsync([FromRoute, Required] string type, [FromQuery] int count = 10, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> GetStoriesByTypeAsync([FromRoute, Required, AllowedValues("top", "new", "best", "ask", "show", "job")] string type, [FromQuery] int count = 10, CancellationToken cancellationToken = default)
         {
             var stories = await hackerNewsService.GetStoriesByTypeAsync(type, count, StoryComparer.Instance, cancellationToken).ConfigureAwait(false);
             var response = stories.Select(MapToResponse);

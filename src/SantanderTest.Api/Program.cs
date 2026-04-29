@@ -43,7 +43,6 @@ namespace SantanderTest.Api
                 {
                     x.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-                    x.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
                     x.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
                     x.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
                 });
